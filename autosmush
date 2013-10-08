@@ -90,6 +90,16 @@
             {
                 // But first, check to see if the image has already been smushed...
                 $headers = $s3->get_object_headers($bucket_name, $object);
+
+
+                $filename = explode(".", (end(explode('/', $object))));
+                if (strcasecmp($filename[0], 'original') == 0)
+                {
+                    iflog("SKIPPED: {$object} is the original file\n");
+                    $files_skipped++;
+                    continue;
+                }
+
                 if(isset($headers->header['x-amz-meta-smushed']))
                 {
                     iflog("SKIPPED: {$object} already smushed\n");
