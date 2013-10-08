@@ -1,3 +1,20 @@
+Features of this Fork
+=========
+
+ * Skipping images with the case insensitive name 'original'. 
+ * Added aws-sdk 1.6.x version to the lib folder
+ 
+
+Note
+=========
+
+To run the file I use the command: 
+ `php autosmush some-s3-bucket-name`
+
+or
+
+`php autosmush some-s3-bucket-name/path/to/files`
+
 Autosmush
 =========
 
