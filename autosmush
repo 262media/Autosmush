@@ -170,11 +170,10 @@
                     }
                 }
             }
-            catch(Exception $e)
-            {
-              echo "CAUGHT exception!!!!"; 
-              continue;
-            }
+          }catch(Exception $e){
+            echo "CAUGHT exception!!!!"; 
+            continue;
+          }
         }
 
         // Print our savings...
