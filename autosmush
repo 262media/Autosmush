@@ -85,6 +85,7 @@
         $smush = new SmushIt();
         foreach($files as $object)
         {
+          try {
             // Only smush images...
             if(preg_match('/\.(jpg|jpeg|png)$/i', $object) === 1)
             {
@@ -168,6 +169,11 @@
                         $s3->update_object($bucket_name, $object, $options);
                     }
                 }
+            }
+            catch(Exception $e)
+            {
+              echo "CAUGHT exception!!!!"; 
+              continue;
             }
         }
 
