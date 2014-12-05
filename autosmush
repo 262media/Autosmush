@@ -1,205 +1,209 @@
 #!/usr/bin/php
 <?PHP
-    // ** IMPORTANT **
-    // Autosmush requires the Amazon PHP SDK, which is not included in this project.
-    // To download and install the SDK, follow these steps...
-    //
-    // 1) Download the 1.6.x AWS SDK for PHP from here: https://github.com/amazonwebservices/aws-sdk-for-php/releases
-    // 2) Unzip file
-    // 3) Inside the unzipped folder, copy the 'sdk-x.x.x' folder into Autosmush's 'lib' folder
-    // 4) Rename 'sdk-x.x.x' to 'sdk'
+// ** IMPORTANT **
+// Autosmush requires the Amazon PHP SDK, which is not included in this project.
+// To download and install the SDK, follow these steps...
+//
+// 1) Download the 1.6.x AWS SDK for PHP from here: https://github.com/amazonwebservices/aws-sdk-for-php/releases
+// 2) Unzip file
+// 3) Inside the unzipped folder, copy the 'sdk-x.x.x' folder into Autosmush's 'lib' folder
+// 4) Rename 'sdk-x.x.x' to 'sdk'
 
-	// Enter your credentials
-    define('AWS_S3_KEY', '');
-    define('AWS_S3_SECRET', '');
+// Enter your credentials
+define('AWS_S3_KEY', '');
+define('AWS_S3_SECRET', '');
 
-    // Prevent PHP 5.3 time zone warning...
-    if(function_exists('date_default_timezone_set'))
-        date_default_timezone_set('America/Los_Angeles');
+// Prevent PHP 5.3 time zone warning...
+if (function_exists('date_default_timezone_set'))
+    date_default_timezone_set('America/Los_Angeles');
 
-    require_once 'lib/sdk/sdk.class.php';
-    require_once 'lib/class.smushit.php';
+require_once 'lib/sdk/sdk.class.php';
+require_once 'lib/class.smushit.php';
 
-    $shortops = 'tq';
-    $longopts = array('help');
-    $options  = getopt($shortops, $longopts);
+$shortops = 'trq';
+$longopts = array('help');
+$options = getopt($shortops, $longopts);
 
-    if(array_key_exists('help', $options) || $GLOBALS['argc'] == 1)
-    {
-        echo "Usage: " . $GLOBALS['argv'][0] . " [OPTION]... bucket-name OR bucket-name/path\n";
-        echo "Scans an Amazon S3 bucket for uncompressed images and smushes them using Yahoo!'s Smush.it service.\n";
-        echo "-t  Test mode - don't commit any changes\n";
-        echo "-q  Quite mode - only display errors\n";
-        echo "\n";
-        exit;
+if (array_key_exists('help', $options) || $GLOBALS['argc'] == 1) {
+    echo "Usage: " . $GLOBALS['argv'][0] . " [OPTION]... bucket-name OR bucket-name/path\n";
+    echo "Scans an Amazon S3 bucket for uncompressed images and smushes them using Yahoo!'s Smush.it service.\n";
+    echo "-r  Set Region - set the bucket's region\n";
+    echo "-t  Test mode - don't commit any changes\n";
+    echo "-q  Quite mode - only display errors\n";
+    echo "\n";
+    exit;
+}
+
+if (array_key_exists('t', $options))
+    define('TEST', true);
+else
+    define('TEST', false);
+
+$supported_zones = array('us-west-2',
+    'us-west-1',
+    'eu-west-1',
+    'eu-central-1',
+    'ap-southeast-1',
+    'ap-southeast-2',
+    'ap-northeast-1',
+    'sa-east-1');
+
+if (array_key_exists('r', $options)) {
+    if(in_array($GLOBALS['argv'][2], $supported_zones)) {
+        define('REGION', 's3-'.$GLOBALS['argv'][2]);
     }
+}
 
-    if(array_key_exists('t', $options))
-        define('TEST', true);
-    else
-        define('TEST', false);
+if(!defined('REGION')){
+    define('REGION', 's3');
+}
 
-    // Parse out our $bucket_name and $bucket_path...
-    $slash = strpos($GLOBALS['argv'][$GLOBALS['argc'] - 1], '/');
-    if($slash === false)
-    {
-        $bucket_name = $GLOBALS['argv'][$GLOBALS['argc'] - 1];
-        $bucket_path = '';
-    }
-    else
-    {
-        $bucket_name = substr($GLOBALS['argv'][$GLOBALS['argc'] - 1], 0, $slash);
-        $bucket_path = substr($GLOBALS['argv'][$GLOBALS['argc'] - 1], $slash + 1);
-    }
+// Parse out our $bucket_name and $bucket_path...
+$slash = strpos($GLOBALS['argv'][$GLOBALS['argc'] - 1], '/');
+if ($slash === false) {
+    $bucket_name = $GLOBALS['argv'][$GLOBALS['argc'] - 1];
+    $bucket_path = '';
+} else {
+    $bucket_name = substr($GLOBALS['argv'][$GLOBALS['argc'] - 1], 0, $slash);
+    $bucket_path = substr($GLOBALS['argv'][$GLOBALS['argc'] - 1], $slash + 1);
+}
 
-    smush_bucket($bucket_name, $bucket_path);
+smush_bucket($bucket_name, $bucket_path);
 
-    function smush_bucket($bucket_name, $bucket_path = '')
-    {
-        // Let's track some compression stats...
-        $files_smushed            = 0;
-        $files_not_smushed        = 0;
-        $files_skipped            = 0;
-        $total_compressed_bytes   = 0;
-        $total_uncompressed_bytes = 0;
+function smush_bucket($bucket_name, $bucket_path = '')
+{
+    // Let's track some compression stats...
+    $files_smushed = 0;
+    $files_not_smushed = 0;
+    $files_skipped = 0;
+    $total_compressed_bytes = 0;
+    $total_uncompressed_bytes = 0;
 
-        // Get the bucket's contents...
-        $s3      = new AmazonS3(array('key' => AWS_S3_KEY, 'secret' => AWS_S3_SECRET));
-        $options = array('prefix' => $bucket_path);
-        
-        // Check bucket's headers
-        $bucket	 = $s3->get_bucket_headers($bucket_name, $options);
-        
-        // Quit if the bucket can't be found
-        if((string)$bucket->status != '200')
-            die("Error: Unable to retrieve bucket contents.\n");
-        
-        // Get file list
-        $files	= $s3->get_object_list($bucket_name, $options);
-        
-        // Quit if the bucket is empty
-        if(count($files) == 0)
-            die("Error: No files found.\n");
+    // Get the bucket's contents...
+    $s3 = new AmazonS3(array('key' => AWS_S3_KEY, 'secret' => AWS_S3_SECRET));
+    $options = array('prefix' => $bucket_path);
 
-        // Loop through everything in the bucket and start smushing...
-        $smush = new SmushIt();
-        foreach($files as $object)
-        {
-          try {
+    // Check bucket's headers
+    $bucket = $s3->get_bucket_headers($bucket_name, $options);
+
+    // Quit if the bucket can't be found
+    if ((string)$bucket->status != '200')
+        die("Error: Unable to retrieve bucket contents.\n");
+
+    // Get file list
+    $files = $s3->get_object_list($bucket_name, $options);
+
+    // Quit if the bucket is empty
+    if (count($files) == 0)
+        die("Error: No files found.\n");
+
+    // Loop through everything in the bucket and start smushing...
+    $smush = new SmushIt();
+    foreach ($files as $object) {
+        try {
             // Only smush images...
-            if(preg_match('/\.(jpg|jpeg|png)$/i', $object) === 1)
-            {
+            if (preg_match('/\.(jpg|jpeg|png)$/i', $object) === 1) {
                 // But first, check to see if the image has already been smushed...
                 $headers = $s3->get_object_headers($bucket_name, $object);
 
 
                 $filename = explode(".", (end(explode('/', $object))));
-                if (strcasecmp($filename[0], 'original') == 0)
-                {
+                if (strcasecmp($filename[0], 'original') == 0) {
                     iflog("SKIPPED: {$object} is the original file\n");
                     $files_skipped++;
                     continue;
                 }
 
-                if(isset($headers->header['x-amz-meta-smushed']))
-                {
+                if (isset($headers->header['x-amz-meta-smushed'])) {
                     iflog("SKIPPED: {$object} already smushed\n");
                     $files_skipped++;
                     continue;
                 }
 
                 // Smush the image
-                $smush->smushURL("http://s3.amazonaws.com/$bucket_name/" . $object);
+                //echo "http://". REGION .".amazonaws.com/$bucket_name/" . $object;
+                $smush->smushURL("http://". REGION .".amazonaws.com/$bucket_name/" . $object);
 
                 // If Smush.it was successful...
-                if($smush->savings)
-                {
+                if ($smush->savings) {
                     iflog("SMUSHED: {$object} ({$smush->savings}%)\n");
 
                     $files_smushed++;
                     $total_uncompressed_bytes += $smush->size;
                     $total_compressed_bytes += $smush->compressedSize;
 
-                    if(!TEST)
-                    {
+                    if (!TEST) {
                         // Download the newly smushed version...
                         $tmp_filename = tempnam('/tmp', 'smush');
-                        $fp           = fopen($tmp_filename, 'w+');
-                        $ch           = curl_init($smush->compressedUrl);
+                        $fp = fopen($tmp_filename, 'w+');
+                        $ch = curl_init($smush->compressedUrl);
                         curl_setopt($ch, CURLOPT_FILE, $fp);
                         curl_exec($ch);
                         curl_close($ch);
                         fclose($fp);
 
-                        if(file_exists($tmp_filename) && is_readable($tmp_filename) && filesize($tmp_filename) == $smush->compressedSize)
-                        {
+                        if (file_exists($tmp_filename) && is_readable($tmp_filename) && filesize($tmp_filename) == $smush->compressedSize) {
                             // Upload the smushed version...
                             $options = array(
-                                            'fileUpload' => $tmp_filename,
-                                            'acl' => AmazonS3::ACL_PUBLIC,
-                                            'contentType' => (string)$headers->header['content-type'],
-                                            'meta' => array('smushed' => 'yes'),
-                                            'headers' => array('expires' => date('D, j M Y H:i:s', time() + (86400 * 365 * 10)) . ' GMT')
-                                            );
+                                'fileUpload' => $tmp_filename,
+                                'acl' => AmazonS3::ACL_PUBLIC,
+                                'contentType' => (string)$headers->header['content-type'],
+                                'meta' => array('smushed' => 'yes'),
+                                'headers' => array('expires' => date('D, j M Y H:i:s', time() + (86400 * 365 * 10)) . ' GMT')
+                            );
                             $s3->create_object($bucket_name, $object, $options);
-                            
+
                             // Delete Temp File
                             unlink($tmp_filename);
-                        }
-                        else
-                        {
+                        } else {
                             iflog("ERROR: Could not download smushed version of {$object} \n");
                         }
                     }
-                }
-                else
-                {
+                } else {
                     iflog("NOT SMUSHED: {$object} already compressed\n");
                     $files_not_smushed++;
                     $total_uncompressed_bytes += $smush->size;
 
-                    if(!TEST)
-                    {
+                    if (!TEST) {
                         // Mark it as smushed so we don't waste time next time...
                         $options = array(
-                                        'meta' => array('smushed' => 'yes'),
-                                        'acl' => AmazonS3::ACL_PUBLIC,
-                                        'headers' => array('expires' => date('D, j M Y H:i:s', time() + (86400 * 365 * 10)) . ' GMT')
-                                        );
+                            'meta' => array('smushed' => 'yes'),
+                            'acl' => AmazonS3::ACL_PUBLIC,
+                            'headers' => array('expires' => date('D, j M Y H:i:s', time() + (86400 * 365 * 10)) . ' GMT')
+                        );
                         $s3->update_object($bucket_name, $object, $options);
                     }
                 }
             }
-          }catch(Exception $e){
-            echo "CAUGHT exception!!!!"; 
+        } catch (Exception $e) {
+            echo "CAUGHT exception!!!!";
             continue;
-          }
         }
-
-        // Print our savings...
-        iflog('  Files Smushed: ' . $files_smushed . "\n");
-        iflog('Could Not Smush: ' . $files_not_smushed . "\n");
-        iflog('  Files Skipped: ' . $files_skipped . "\n\n");
-        iflog('           Size: ' . bytes2str($total_uncompressed_bytes) . "\n");
-        iflog('Compressed Size: ' . bytes2str($total_compressed_bytes) . "\n\n");
-        iflog('        Savings: ' . bytes2str($total_uncompressed_bytes - $total_compressed_bytes) . "\n");
-        iflog('      Savings %: ' . ($total_uncompressed_bytes === 0) ? 0 : round(($total_uncompressed_bytes - $total_compressed_bytes) / $total_uncompressed_bytes * 100, 2)  . "%\n");
     }
 
-    function iflog($str)
-    {
-        global $options;
-        if(array_key_exists('q', $options)) return;
-        echo $str;
-    }
+    // Print our savings...
+    iflog('  Files Smushed: ' . $files_smushed . "\n");
+    iflog('Could Not Smush: ' . $files_not_smushed . "\n");
+    iflog('  Files Skipped: ' . $files_skipped . "\n\n");
+    iflog('           Size: ' . bytes2str($total_uncompressed_bytes) . "\n");
+    iflog('Compressed Size: ' . bytes2str($total_compressed_bytes) . "\n\n");
+    iflog('        Savings: ' . bytes2str($total_uncompressed_bytes - $total_compressed_bytes) . "\n");
+    iflog('      Savings %: ' . ($total_uncompressed_bytes === 0) ? 0 : round(($total_uncompressed_bytes - $total_compressed_bytes) / $total_uncompressed_bytes * 100, 2) . "%\n");
+}
 
-    function bytes2str($val, $round = 0)
-    {
-        $unit = array('','K','M','G','T','P','E','Z','Y');
-        while($val >= 1000)
-        {
-            $val /= 1024;
-            array_shift($unit);
-        }
-        return round($val, $round) . array_shift($unit) . 'B';
+function iflog($str)
+{
+    global $options;
+    if (array_key_exists('q', $options)) return;
+    echo $str;
+}
+
+function bytes2str($val, $round = 0)
+{
+    $unit = array('', 'K', 'M', 'G', 'T', 'P', 'E', 'Z', 'Y');
+    while ($val >= 1000) {
+        $val /= 1024;
+        array_shift($unit);
     }
+    return round($val, $round) . array_shift($unit) . 'B';
+}

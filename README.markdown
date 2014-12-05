@@ -1,3 +1,10 @@
+Features of this Fork from the Fork
+=========
+
+* Added parameter -r to select a region.
+
+Available regions are: 'us-west-1' (default s3), 'us-west-2', 'us-west-1', 'eu-west-1', 'eu-central-1', 'ap-southeast-1', 'ap-southeast-2', 'ap-northeast-1', 'sa-east-1'
+
 Features of this Fork
 =========
 
@@ -13,7 +20,7 @@ To run the file I use the command:
 
 or
 
-`php autosmush some-s3-bucket-name/path/to/files`
+`php autosmush -r [region-name] -t some-s3-bucket-name/path/to/files`
 
 Autosmush
 =========
